@@ -1,5 +1,7 @@
-libtcrf.so : libtcrf.cpp
-g++ -o libtcrf.so -Ofast -fopenmp -shared -fPIC libtcrf.cpp
+libtcrf.so	:	libtcrf.c
+gcc -o libtcrf.so -Ofast -fopenmp -shared -fPIC libtcrf.c
 
-clean : 
+clean	:
 	rm -fr libtcrf.so
+
+all	:	libtcrf.so
