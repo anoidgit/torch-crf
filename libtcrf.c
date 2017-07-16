@@ -26,10 +26,9 @@ seql:	sequence length
 ncondition:	number of states
 route:	the result route of highest score
 return:	the score
-*/
-float oneViterbiRoute(float** trans, float** emit, float* start, float* end, int seql, int ncondition, int* route);
+*/float oneViterbiRoute(float** trans, float** emit, float* start, float* end, int seql, int ncondition, int** rcache, float* scache, int* route);
 //batch version of oneViterbiRoute
-void viterbiRoute(float** trans, float*** emit, float* start, float* end, int* seql, int ncondition, int** route, float* score);
+void viterbiRoute(float** trans, float*** emit, float* start, float* end, int* seql, int ncondition, int*** rcache, float** scache, int** route, float* score);
 
 float oneRouteScore(int* route, float** trans, float** emit, float* start, float* end, int seql, int ncondition){
 	float rs = start[route[0]] + emit[0][route[0]];
@@ -50,14 +49,14 @@ void routeScore(int** route, float** trans, float*** emit, float* start, float* 
 }
 
 // to be implemented
-float oneViterbiRoute(float** trans, float** emit, float* start, float* end, int seql, int ncondition, int* route){
+float oneViterbiRoute(float** trans, float** emit, float* start, float* end, int seql, int ncondition, int** rcache, float* scache, int* route){
 	return 0;
 }
 
-void viterbiRoute(float** trans, float*** emit, float* start, float* end, int* seql, int ncondition, int** route, float* score){
+void viterbiRoute(float** trans, float*** emit, float* start, float* end, int* seql, int ncondition, int*** rcache, float** scache, int** route, float* score){
 	int i = 0;
 	#pragma omp parallel for
 	for(i = 0; i < seql; ++i){
-		score[i] = oneViterbiRoute(trans, emit[i], start, end, seql[i], ncondition, route[i]);
+		score[i] = oneViterbiRoute(trans, emit[i], start, end, seql[i], ncondition, rcache[i], scache[i], route[i]);
 	}
 }
