@@ -1,7 +1,10 @@
-libtcrf.so	:	libtcrf.c
-gcc -o libtcrf.so -Ofast -fopenmp -shared -fPIC libtcrf.c
+CC = gcc
+CFLAGS = -Ofast -march=native -fopenmp -shared -fPIC
 
-clean	:
+libtcrf.so : libtcrf.c
+	$(CC) libtcrf.c -o libtcrf.so $(CFLAGS)
+
+clean :
 	rm -fr libtcrf.so
 
-all	:	libtcrf.so
+all : libtcrf.so
