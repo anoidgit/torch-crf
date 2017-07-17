@@ -4,7 +4,7 @@ ffi.cdef[[
 void viterbiRoute(pfloat** trans, pfloat*** emit, pfloat* sos, pfloat* eos, int* seql, int ncondition, int*** rcache, pfloat** scache, int** route, pfloat* score);
 ]]
 
-local cAPI = ffi.load('libcurl')
+local cAPI = ffi.load('libtcrf')
 
 local CRFM, parent = torch.class('nn.CRFM', 'nn.Module')
 
