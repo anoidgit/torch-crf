@@ -14,10 +14,22 @@ function CRFM:__init(nstatus, weight)
 	self.stdZero = torch.zeros(nstatus)
 end
 
+local function C2Tensor(cdata, fdim, sdim)
+	local rs = {}
+	for i = 0, fdim - 1 do
+		local curd = {}
+		for j = 0, sdim - 1 do
+			table.insert(curd, cdata[i][j])
+		end
+		table.insert(rs, curd)
+	end
+	return torch.FloatTensor(rs)
+end
+
 function CRFM:updateOutput(input)
 	self:prepare(input)
 	cAPI.viterbiRoute(self.cweight, self.cinput, self.trans[self.nstatus], self.trans[self.nstatus + 1], self.cseql, self.nstatus, self.rcache, self.scache, self.coutput, self.score)
-	self.output = toTensor(self.coutput, self.bsize, self.seql):t():typeAs(input)
+	self.output = C2Tensor(self.coutput, self.bsize, self.seql):t():typeAs(input)
 	return self.output
 end
 
