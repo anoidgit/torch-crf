@@ -5,7 +5,7 @@
 typedef float pfloat;
 
 /*
-this function is disigned to calc the score of a specific route, used to calc the loss
+this function is designed to calc the score of a specific route, used to calc the loss
 route:	tag sequence
 trans:	trans mat (ncondition*ncondition)
 emit:	emit mat (seql*ncondition)
@@ -19,7 +19,7 @@ pfloat oneRouteScore(int* route, pfloat** trans, pfloat** emit, pfloat* sos, pfl
 //batch version of oneRouteScore
 void routeScore(int** route, pfloat** trans, pfloat*** emit, pfloat* sos, pfloat* eos, int* seql, int ncondition, pfloat* rs);
 /*
-this function is disigned to find the path with the highest score
+this function is designed to find the path with the highest score
 trans:	trans mat (ncondition*ncondition)
 emit:	emit mat (seql*ncondition)
 sos:	logp of trans from <sos> tag (ncondition)
