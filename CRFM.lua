@@ -2,6 +2,7 @@ local ffi = require("ffi")
 
 ffi.cdef[[
 void viterbiRoute(pfloat** trans, pfloat*** emit, pfloat* sos, pfloat* eos, int* seql, int ncondition, int*** rcache, pfloat** scache, int** route, pfloat* score);
+void routeScore(int** route, pfloat** trans, pfloat*** emit, pfloat* sos, pfloat* eos, int* seql, int ncondition, pfloat* rs);
 ]]
 
 local cAPI = ffi.load('libtcrf')
@@ -14,22 +15,21 @@ function CRFM:__init(nstatus, weight)
 	self.stdZero = torch.zeros(nstatus)
 end
 
-local function C2Tensor(cdata, fdim, sdim)
-	local rs = {}
-	for i = 0, fdim - 1 do
-		local curd = {}
-		for j = 0, sdim - 1 do
-			table.insert(curd, cdata[i][j])
-		end
-		table.insert(rs, curd)
-	end
-	return torch.FloatTensor(rs)
-end
-
 function CRFM:updateOutput(input)
+	local function C2Table(cdata, fdim, sdim)
+		local rs = {}
+		for i = 0, fdim - 1 do
+			local curd = {}
+			for j = 0, sdim - 1 do
+				table.insert(curd, cdata[i][j])
+			end
+			table.insert(rs, curd)
+		end
+		return rs
+	end
 	self:prepare(input)
 	cAPI.viterbiRoute(self.cweight, self.cinput, self.trans[self.nstatus], self.trans[self.nstatus + 1], self.cseql, self.nstatus, self.rcache, self.scache, self.coutput, self.score)
-	self.output = C2Tensor(self.coutput, self.bsize, self.seql):t():typeAs(input)
+	self.output = torch.IntTensor(C2Table(self.coutput, self.bsize, self.seql)):t():typeAs(input)
 	return self.output
 end
 
@@ -41,7 +41,7 @@ function CRFM:prepare(input)
 	self.cweight = ffi.new(string.format("float[%d][%d]", self.nstatus + 2, self.nstatus), self.weight:totable())
 	self:getSeqlen(input, bsize, seql)
 	if (seql ~= self.seql) or (bsize ~= self.bsize) then
-		self.rcache = ffi.new(string.format("int[%d][%d][%d]", bsize, seql, self.nstatus))
+		self.rcache = ffi.new(string.format("int[%d][%d][%d]", bsize, seql - 1, self.nstatus))
 		self.scache = ffi.new(string.format("float[%d][%d]", bsize, seql))
 		self.coutput = ffi.new(string.format("int[%d][%d]", bsize, seql))
 		self.seql = seql
@@ -50,6 +50,32 @@ function CRFM:prepare(input)
 			self.bsize = bsize
 		end
 	end
+end
+
+function CRFM:computeGold(gold)
+	self.cgold = ffi.new(string.format("int[%d][%d]", self.bsize, self.seql), gold:t():totable())
+	self.cgscore = ffi.new(string.format("float[%d]", self.bsize))
+	cAPI.routeScore(self.cgold, self.cweight, self.cinput, self.trans[self.nstatus], self.trans[self.nstatus + 1], self.cseql, self.nstatus, self.cgscore)
+	return self.cgscore
+end
+
+function CRFM:getLoss(gold, avg)
+	self:computeGold(gold)
+	self.loss = {}
+	local loss = 0
+	for i = 0, self.bsize - 1 do
+		local _loss = self.cscore[i] - self.cgscore[i]
+		table.insert(self.loss, _loss)
+		loss = loss + _loss
+	end
+	if avg then
+		local wds = 0
+		for i = 0, self.bsize - 1 do
+			wds = wds + self.cseql[i]
+		end
+		loss = loss / wds
+	end
+	return loss
 end
 
 function CRFM:getSeqlen(seqd, bsize, seql)
@@ -67,10 +93,12 @@ end
 
 function CRFM:reset(weight)
 	self.weight = nn.LogSoftMax():updateOutput(weight)
+	self.gradweight:resizeAs(self.weight):zero()
 	self:clearState()
 end
 
 function CRFM:clearState()
+	self.loss = nil
 	self.seql = 0
 	self.bsize = 0
 	self.cinput = nil
@@ -80,5 +108,7 @@ function CRFM:clearState()
 	self.scache = nil
 	self.coutput = nil
 	self.cscore = nil
+	self.cgold = nil
+	self.cgscore = nil
 	return parent.clearState()
 end
