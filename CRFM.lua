@@ -92,8 +92,13 @@ function CRFM:getSeqlen(seqd, bsize, seql)
 end
 
 function CRFM:reset(weight)
-	self.weight = nn.LogSoftMax():updateOutput(weight)
-	self.gradweight:resizeAs(self.weight):zero()
+	-- compute logSoftMax of weight
+	local w = weight:reshape(weight:size(1) * weight:size(2))
+	w:csub(w:max()):exp()
+	w:div(w:sum()):log()
+	-- asign logsoftmax probability to self.weight
+	self.weight = w:reshape(weight:size())
+	self.gradWeight:resizeAs(self.weight):zero()
 	self:clearState()
 end
 
