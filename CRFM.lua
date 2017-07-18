@@ -1,8 +1,10 @@
 local ffi = require("ffi")
 
 ffi.cdef[[
-void viterbiRoute(pfloat** trans, pfloat*** emit, pfloat* sos, pfloat* eos, int* seql, int ncondition, int*** rcache, pfloat** scache, int** route, pfloat* score);
-void routeScore(int** route, pfloat** trans, pfloat*** emit, pfloat* sos, pfloat* eos, int* seql, int ncondition, pfloat* rs);
+void viterbiRoute(float** trans, float*** emit, float* sos, float* eos, int bsize, int* seql, int ncondition, int*** rcache, float** scache, int** route, float* score);
+void routeScore(int** route, float** trans, float*** emit, float* sos, float* eos, int bsize, int* seql, int ncondition, float* rs);
+void calcGrad(int** gold, int** pred, int bsize, int* seql, float* losses, float** grad, float* gsos, float* geos);
+float getLoss(float* gscore, float* pscore, int bsize, int* seql, int avg, float* losses);
 ]]
 
 local cAPI = ffi.load('libtcrf')
@@ -15,20 +17,21 @@ function CRFM:__init(nstatus, weight)
 	self.stdZero = torch.zeros(nstatus)
 end
 
-function CRFM:updateOutput(input)
-	local function C2Table(cdata, fdim, sdim)
-		local rs = {}
-		for i = 0, fdim - 1 do
-			local curd = {}
-			for j = 0, sdim - 1 do
-				table.insert(curd, cdata[i][j])
-			end
-			table.insert(rs, curd)
+local function C2Table(cdata, fdim, sdim)
+	local rs = {}
+	for i = 0, fdim - 1 do
+		local curd = {}
+		for j = 0, sdim - 1 do
+			table.insert(curd, cdata[i][j])
 		end
-		return rs
+		table.insert(rs, curd)
 	end
+	return rs
+	end
+
+function CRFM:updateOutput(input)
 	self:prepare(input)
-	cAPI.viterbiRoute(self.cweight, self.cinput, self.trans[self.nstatus], self.trans[self.nstatus + 1], self.cseql, self.nstatus, self.rcache, self.scache, self.coutput, self.score)
+	cAPI.viterbiRoute(self.cweight, self.cinput, self.trans[self.nstatus], self.trans[self.nstatus + 1], self.bsize, self.cseql, self.nstatus, self.rcache, self.scache, self.coutput, self.score)
 	self.output = torch.IntTensor(C2Table(self.coutput, self.bsize, self.seql)):t():typeAs(input)
 	return self.output
 end
@@ -53,26 +56,9 @@ function CRFM:updateGradInput(input, gradOutput)
 end
 
 function CRFM:accGradParameters(input, gradOutput, scale)
-	scale = scale or 1
-	for i = 0, self.bsize -1 do
-		local _loss = self.loss[i + 1] * scale
-		if self.cgold[i][0] ~= self.coutput[i][0] then
-			self.gradWeight[self.nstatus][self.coutput[i][0]] = self.gradWeight[self.nstatus][self.coutput[i][0]] + _loss
-			self.gradWeight[self.nstatus][self.cgold[i][0]] = self.gradWeight[self.nstatus][self.cgold[i][0]] - _loss
-		end
-		for j = 1, self.cseql[i] - 2 do
-			if self.cgold[i][j] ~= self.coutput[i][j] then
-				self.gradWeight[self.coutput[i][j - 1]][self.coutput[i][j]] = self.gradWeight[self.coutput[i][j - 1]][self.coutput[i][j]] + _loss
-				self.gradWeight[self.cgold[i][j - 1]][self.cgold[i][j]] = self.gradWeight[self.cgold[i][j - 1]][self.cgold[i][j]] - _loss
-			end
-		end
-		if self.cgold[i][self.cseql[i] - 1] ~= self.coutput[i][self.cseql[i] - 1] then
-			self.gradWeight[self.coutput[i][self.cseql[i] - 2]][self.coutput[i][self.cseql[i] - 1]] = self.gradWeight[self.coutput[i][self.cseql[i] - 2]][self.coutput[i][self.cseql[i] - 1]] + _loss
-			self.gradWeight[self.cgold[i][self.cseql[i] - 2]][self.cgold[i][self.cseql[i] - 1]] = self.gradWeight[self.cgold[i][self.cseql[i] - 2]][self.cgold[i][self.cseql[i] - 1]] - _loss
-			self.gradWeight[self.nstatus + 1][self.coutput[i][self.cseql[i] - 1]] = self.gradWeight[self.nstatus + 1][self.coutput[i][self.cseql[i] - 1]] + _loss
-			self.gradWeight[self.nstatus + 1][self.cgold[i][self.cseql[i] - 1]] = self.gradWeight[self.nstatus + 1][self.cgold[i][self.cseql[i] - 1]] - _loss
-		end
-	end
+	self.cgrad = ffi.new(string.format("float[%d][%d]", self.nstatus + 2, self.nstatus), self.gradWeight:totable())
+	cAPI.calcGrad(self.cgold, self.coutput, self.bsize, self.cseql, self.closs, self.cgrad, self.cgrad[self.nstatus], self.cgrad[self.nstatus + 1])
+	self.gradWeight:add(scale or 1, torch.FloatTensor(C2Table(self.cgrad)):typeAs(self.gradWeight))
 end
 
 function CRFM:prepare(input)
@@ -97,27 +83,18 @@ end
 function CRFM:computeGold(gold)
 	self.cgold = ffi.new(string.format("int[%d][%d]", self.bsize, self.seql), gold:t():totable())
 	self.cgscore = ffi.new(string.format("float[%d]", self.bsize))
-	cAPI.routeScore(self.cgold, self.cweight, self.cinput, self.trans[self.nstatus], self.trans[self.nstatus + 1], self.cseql, self.nstatus, self.cgscore)
+	cAPI.routeScore(self.cgold, self.cweight, self.cinput, self.trans[self.nstatus], self.trans[self.nstatus + 1], self.bsize, self.cseql, self.nstatus, self.cgscore)
 	return self.cgscore
 end
 
 function CRFM:getLoss(gold, avg)
 	self:computeGold(gold)
-	self.loss = {}
-	local loss = 0
-	for i = 0, self.bsize - 1 do
-		local _loss = self.cscore[i] - self.cgscore[i]
-		table.insert(self.loss, _loss)
-		loss = loss + _loss
-	end
+	self.closs = ffi.new(string.format("float[%d]", self.bsize))
 	if avg then
-		local wds = 0
-		for i = 0, self.bsize - 1 do
-			wds = wds + self.cseql[i]
-		end
-		loss = loss / wds
+		return cAPI.getLoss(self.cgscore, self.cscore, self.bsize, self.cseql, 1, self.closs)
+	else
+		return cAPI.getLoss(self.cgscore, self.cscore, self.bsize, self.cseql, 0, self.closs)
 	end
-	return loss
 end
 
 function CRFM:getSeqlen(seqd, bsize, seql)
@@ -157,5 +134,7 @@ function CRFM:clearState()
 	self.cscore = nil
 	self.cgold = nil
 	self.cgscore = nil
+	self.cgrad = nil
+	self.closs = nil
 	return parent.clearState()
 end
