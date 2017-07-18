@@ -33,6 +33,48 @@ function CRFM:updateOutput(input)
 	return self.output
 end
 
+function CRFM:updateGradInput(input, gradOutput)
+	if not self.gradInput:isSize(input) then
+		self.gradInput:resizeAs(input):zero()
+	else
+		self.gradInput:zero()
+	end
+	for i = 0, self.bsize -1 do
+		local _loss = self.loss[i + 1]
+		local _nloss = -_loss
+		for j = 0, self.cseql[i] - 1 do
+			if self.cgold[i][j] ~= self.coutput[i][j] then
+				self.gradInput[j + 1][i + 1][self.coutput[i][j]] = _loss
+				self.gradInput[j + 1][i + 1][self.cgold[i][j]] = _nloss
+			end
+		end
+	end
+	return self.gradInput
+end
+
+function CRFM:accGradParameters(input, gradOutput, scale)
+	scale = scale or 1
+	for i = 0, self.bsize -1 do
+		local _loss = self.loss[i + 1] * scale
+		if self.cgold[i][0] ~= self.coutput[i][0] then
+			self.gradWeight[self.nstatus][self.coutput[i][0]] = self.gradWeight[self.nstatus][self.coutput[i][0]] + _loss
+			self.gradWeight[self.nstatus][self.cgold[i][0]] = self.gradWeight[self.nstatus][self.cgold[i][0]] - _loss
+		end
+		for j = 1, self.cseql[i] - 2 do
+			if self.cgold[i][j] ~= self.coutput[i][j] then
+				self.gradWeight[self.coutput[i][j - 1]][self.coutput[i][j]] = self.gradWeight[self.coutput[i][j - 1]][self.coutput[i][j]] + _loss
+				self.gradWeight[self.cgold[i][j - 1]][self.cgold[i][j]] = self.gradWeight[self.cgold[i][j - 1]][self.cgold[i][j]] - _loss
+			end
+		end
+		if self.cgold[i][self.cseql[i] - 1] ~= self.coutput[i][self.cseql[i] - 1] then
+			self.gradWeight[self.coutput[i][self.cseql[i] - 2]][self.coutput[i][self.cseql[i] - 1]] = self.gradWeight[self.coutput[i][self.cseql[i] - 2]][self.coutput[i][self.cseql[i] - 1]] + _loss
+			self.gradWeight[self.cgold[i][self.cseql[i] - 2]][self.cgold[i][self.cseql[i] - 1]] = self.gradWeight[self.cgold[i][self.cseql[i] - 2]][self.cgold[i][self.cseql[i] - 1]] - _loss
+			self.gradWeight[self.nstatus + 1][self.coutput[i][self.cseql[i] - 1]] = self.gradWeight[self.nstatus + 1][self.coutput[i][self.cseql[i] - 1]] + _loss
+			self.gradWeight[self.nstatus + 1][self.cgold[i][self.cseql[i] - 1]] = self.gradWeight[self.nstatus + 1][self.cgold[i][self.cseql[i] - 1]] - _loss
+		end
+	end
+end
+
 function CRFM:prepare(input)
 	local isize = input:size()
 	local seql = isize[1]
