@@ -12,8 +12,9 @@ local cAPI = ffi.load('libtcrf')
 local CRFM, parent = torch.class('nn.CRFM', 'nn.Module')
 
 function CRFM:__init(nstatus, weight)
-	self:reset(weight or torch.randn(nstatus + 2, nstatus))
+	parent.__init()
 	self.nstatus = nstatus
+	self:reset(weight)
 	self.stdZero = torch.zeros(nstatus)
 end
 
@@ -111,18 +112,12 @@ function CRFM:getSeqlen(seqd, bsize, seql)
 end
 
 function CRFM:reset(weight)
-	-- compute logSoftMax of weight
-	local w = weight:reshape(weight:size(1) * weight:size(2))
-	w:csub(w:max()):exp()
-	w:div(w:sum()):log()
-	-- asign logsoftmax probability to self.weight
-	self.weight = w:reshape(weight:size())
+	self.weight = weight or torch.randn(self.nstatus + 2, self.nstatus)
 	self.gradWeight:resizeAs(self.weight):zero()
 	self:clearState()
 end
 
 function CRFM:clearState()
-	self.loss = nil
 	self.seql = 0
 	self.bsize = 0
 	self.cinput = nil
