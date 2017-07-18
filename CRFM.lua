@@ -9,10 +9,12 @@ float getLoss(float* gscore, float* pscore, int bsize, int* seql, int avg, float
 
 local cAPI = ffi.load('libtcrf')
 
-local CRFM, parent = torch.class('nn.CRFM', 'nn.Module')
+local CRFM, parent = torch.class('nn.CRFM', 'nn.Container')
 
 function CRFM:__init(nstatus, weight)
-	parent.__init()
+	parent.__init(self)
+	self.network = nn.LogSoftMax()
+	self:add(self.network)
 	self.nstatus = nstatus
 	self:reset(weight)
 	self.stdZero = torch.zeros(nstatus)
@@ -59,7 +61,7 @@ end
 function CRFM:accGradParameters(input, gradOutput, scale)
 	self.cgrad = ffi.new(string.format("float[%d][%d]", self.nstatus + 2, self.nstatus), self.gradWeight:totable())
 	cAPI.calcGrad(self.cgold, self.coutput, self.bsize, self.cseql, self.closs, self.cgrad, self.cgrad[self.nstatus], self.cgrad[self.nstatus + 1])
-	self.gradWeight:add(scale or 1, torch.FloatTensor(C2Table(self.cgrad)):typeAs(self.gradWeight))
+	self.gradWeight:add(scale or 1, self.network:updateGradInput(self.weight, torch.FloatTensor(C2Table(self.cgrad)):typeAs(self.gradWeight)))
 end
 
 function CRFM:prepare(input)
@@ -67,7 +69,7 @@ function CRFM:prepare(input)
 	local seql = isize[1]
 	local bsize = isize[2]
 	self.cinput = ffi.new(string.format("float[%d][%d][%d]", bsize, seql, self.nstatus), input:transpose(1, 2):totable)
-	self.cweight = ffi.new(string.format("float[%d][%d]", self.nstatus + 2, self.nstatus), self.weight:totable())
+	self.cweight = ffi.new(string.format("float[%d][%d]", self.nstatus + 2, self.nstatus), self.network:updateOutput(self.weight):totable())
 	self:getSeqlen(input, bsize, seql)
 	if (seql ~= self.seql) or (bsize ~= self.bsize) then
 		self.rcache = ffi.new(string.format("int[%d][%d][%d]", bsize, seql - 1, self.nstatus))
