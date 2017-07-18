@@ -17,7 +17,7 @@ return:	score of route
 */
 pfloat oneRouteScore(int* route, pfloat** trans, pfloat** emit, pfloat* sos, pfloat* eos, int seql, int ncondition);
 //batch version of oneRouteScore
-void routeScore(int** route, pfloat** trans, pfloat*** emit, pfloat* sos, pfloat* eos, int* seql, int ncondition, pfloat* rs);
+void routeScore(int** route, pfloat** trans, pfloat*** emit, pfloat* sos, pfloat* eos, int bsize, int* seql, int ncondition, pfloat* rs);
 /*
 this function is designed to find the path with the highest score
 trans:	trans mat (ncondition*ncondition)
@@ -32,7 +32,27 @@ route:	the result route of highest score
 return:	the score
 */pfloat oneViterbiRoute(pfloat** trans, pfloat** emit, pfloat* sos, pfloat* eos, int seql, int ncondition, int** rcache, pfloat* scache, int* route);
 //batch version of oneViterbiRoute
-void viterbiRoute(pfloat** trans, pfloat*** emit, pfloat* sos, pfloat* eos, int* seql, int ncondition, int*** rcache, pfloat** scache, int** route, pfloat* score);
+void viterbiRoute(pfloat** trans, pfloat*** emit, pfloat* sos, pfloat* eos, int bsize, int* seql, int ncondition, int*** rcache, pfloat** scache, int** route, pfloat* score);
+/*calc gradient of parameters
+gold:	answer sequence
+pred:	predict sequence
+bsize:	batch size
+seql:	sequence length
+losses:	loss
+grad:	grad to trans
+gsos:	grad to <sos>
+geos:	grad to <eos>
+*/
+void calcGrad(int** gold, int** pred, int bsize, int* seql, pfloat* losses, pfloat** grad, pfloat* gsos, pfloat* geos);
+/*calc gradient of parameters
+gscore:	score of answer sequence
+pscore:	score of prediction sequence
+bsize:	batch size
+seql:	sequence length
+avg:	average loss or not
+losses:	loss
+*/
+pfloat getLoss(pfloat* gscore, pfloat* pscore, int bsize, int* seql, int avg, pfloat* losses);
 
 pfloat oneRouteScore(int* route, pfloat** trans, pfloat** emit, pfloat* sos, pfloat* eos, int seql, int ncondition){
 	pfloat rs = sos[route[0]] + emit[0][route[0]];
@@ -44,10 +64,10 @@ pfloat oneRouteScore(int* route, pfloat** trans, pfloat** emit, pfloat* sos, pfl
 	return rs;
 }
 
-void routeScore(int** route, pfloat** trans, pfloat*** emit, pfloat* sos, pfloat* eos, int* seql, int ncondition, pfloat* rs){
+void routeScore(int** route, pfloat** trans, pfloat*** emit, pfloat* sos, pfloat* eos, int bsize, int* seql, int ncondition, pfloat* rs){
 	int i;
 	#pragma omp parallel for
-	for (i = 0; i < seql; ++i){
+	for (i = 0; i < bsize; ++i){
 		rs[i] = oneRouteScore(route[i], trans, emit[i], sos, eos, seql[i], ncondition);
 	}
 }
@@ -90,10 +110,47 @@ pfloat oneViterbiRoute(pfloat** trans, pfloat** emit, pfloat* sos, pfloat* eos, 
 	return maxvalue;
 }
 
-void viterbiRoute(pfloat** trans, pfloat*** emit, pfloat* sos, pfloat* eos, int* seql, int ncondition, int*** rcache, pfloat** scache, int** route, pfloat* score){
+void viterbiRoute(pfloat** trans, pfloat*** emit, pfloat* sos, pfloat* eos, int bsize, int* seql, int ncondition, int*** rcache, pfloat** scache, int** route, pfloat* score){
 	int i;
 	#pragma omp parallel for
-	for (i = 0; i < seql; ++i){
+	for (i = 0; i < bsize; ++i){
 		score[i] = oneViterbiRoute(trans, emit[i], sos, eos, seql[i], ncondition, rcache[i], scache[i], route[i]);
 	}
+}
+
+void calcGrad(int** gold, int** pred, int bsize, int* seql, pfloat* losses, pfloat** grad, pfloat* gsos, pfloat* geos){
+	int i;
+	for (i = 0; i < bsize; ++i){
+		pfloat loss = losses[i];
+		if (gold[i][0] != pred[i][0]){
+			gsos[pred[i][0]] += loss;
+			gsos[gold[i][0]] -= loss;
+		}
+		int j;
+		for (j = 1; j < seql[i]; ++j){
+			grad[pred[i][j - 1]][pred[i][j]] += loss;
+			grad[gold[i][j - 1]][gold[i][j]] -= loss;
+		}
+		if (gold[i][seql[i] - 1] != pred[i][seql[i] - 1]){
+			geos[pred[i][seql[i] - 1]] += loss;
+			geos[gold[i][seql[i] - 1]] -= loss;
+		}
+	}
+}
+
+pfloat getLoss(pfloat* gscore, pfloat* pscore, int bsize, int* seql, int avg, pfloat* losses){
+	pfloat loss = 0;
+	int i;
+	for (i = 0; i < bsize; ++i){
+		losses[i] = pscore[i] - gscore[i];
+		loss += losses[i];
+	}
+	if (avg){
+		int l = 0;
+		for (i = 0; i < bsize; ++i){
+			l += seql[i];
+		}
+		loss /= l;
+	}
+	return loss;
 }
