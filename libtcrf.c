@@ -53,6 +53,12 @@ avg:	average loss or not
 losses:	loss
 */
 pfloat getLoss(pfloat* gscore, pfloat* pscore, int bsize, int* seql, int avg, pfloat* losses);
+/*
+mat:	mat to zero
+fdim:	length of first dim
+sdim:	length of second dim
+*/
+void fillMat(pfloat** mat, int fdim, int sdim);
 
 pfloat oneRouteScore(int* route, pfloat** trans, pfloat** emit, pfloat* sos, pfloat* eos, int seql, int ncondition){
 	pfloat rs = sos[route[0]] + emit[0][route[0]];
@@ -153,4 +159,13 @@ pfloat getLoss(pfloat* gscore, pfloat* pscore, int bsize, int* seql, int avg, pf
 		loss /= l;
 	}
 	return loss;
+}
+void fillMat(pfloat** mat, int fdim, int sdim){
+	int i;
+	for (i = 0; i < fdim; ++i){
+		int j;
+		for (j = 0; j < sdim; ++j){
+			mat[i][j] = 0;
+		}
+	}
 }
