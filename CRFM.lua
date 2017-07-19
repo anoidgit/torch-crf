@@ -68,7 +68,7 @@ function CRFM:prepare(input)
 	local isize = input:size()
 	local seql = isize[1]
 	local bsize = isize[2]
-	self.cinput = ffi.new(string.format("float[%d][%d][%d]", bsize, seql, self.nstatus), input:transpose(1, 2):totable)
+	self.cinput = ffi.new(string.format("float[%d][%d][%d]", bsize, seql, self.nstatus), input:transpose(1, 2):totable())
 	self.cweight = ffi.new(string.format("float[%d][%d]", self.nstatus + 2, self.nstatus), self.network:updateOutput(self.weight):totable())
 	self:getSeqlen(input, bsize, seql)
 	if (seql ~= self.seql) or (bsize ~= self.bsize) then
