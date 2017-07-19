@@ -133,5 +133,5 @@ function CRFM:clearState()
 	self.cgscore = nil
 	self.cgrad = nil
 	self.closs = nil
-	return parent.clearState()
+	return parent.clearState(self)
 end
