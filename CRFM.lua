@@ -59,9 +59,7 @@ function CRFM:updateGradInput(input, gradOutput)
 end
 
 function CRFM:accGradParameters(input, gradOutput, scale)
-	if not self.cgrad then
-		self.cgrad = ffi.new(string.format("float[%d][%d]", self.nstatus + 2, self.nstatus))
-	end
+	self.cgrad = ffi.new(string.format("float[%d][%d]", self.nstatus + 2, self.nstatus))
 	cAPI.calcGrad(self.cgold, self.coutput, self.bsize, self.cseql, self.closs, self.cgrad, self.cgrad[self.nstatus], self.cgrad[self.nstatus + 1])
 	self.gradWeight:add(scale or 1, self.network:updateGradInput(self.weight, torch.FloatTensor(C2Table(self.cgrad, self.nstatus + 2, self.nstatus)):typeAs(self.weight)))
 end
