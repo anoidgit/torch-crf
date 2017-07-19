@@ -57,7 +57,7 @@ pfloat getLoss(pfloat* gscore, pfloat* pscore, int bsize, int* seql, int avg, pf
 pfloat oneRouteScore(int* route, pfloat** trans, pfloat** emit, pfloat* sos, pfloat* eos, int seql, int ncondition){
 	pfloat rs = sos[route[0]] + emit[0][route[0]];
 	int i;
-	for (i = 1; i < seql, ++i){
+	for (i = 1; i < seql; ++i){
 		rs += trans[route[i-1]][route[i]] + emit[i][route[i]]
 	}
 	rs += eos[route[seql-1]];
