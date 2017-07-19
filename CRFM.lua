@@ -34,7 +34,7 @@ local function C2Table(cdata, fdim, sdim)
 
 function CRFM:updateOutput(input)
 	self:prepare(input)
-	cAPI.viterbiRoute(self.cweight, self.cinput, self.trans[self.nstatus], self.trans[self.nstatus + 1], self.bsize, self.cseql, self.nstatus, self.rcache, self.scache, self.coutput, self.score)
+	cAPI.viterbiRoute(self.cweight, self.cinput, self.cweight[self.nstatus], self.cweight[self.nstatus + 1], self.bsize, self.cseql, self.nstatus, self.rcache, self.scache, self.coutput, self.score)
 	self.output = torch.IntTensor(C2Table(self.coutput, self.bsize, self.seql)):t():typeAs(input)
 	return self.output
 end
