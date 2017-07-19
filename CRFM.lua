@@ -31,7 +31,69 @@ local function C2Table(cdata, fdim, sdim)
 		table.insert(rs, curd)
 	end
 	return rs
+end
+
+local function getFloatMat(fdim, sdim, matin, ftyp, styp)
+	local rs = ffi.new(ftyp or "float* ["..tostring(fdim).."]")
+	local styp = styp or "float ["..tostring(sdim).."]"
+	if matin then
+		for i, vec in ipairs(matin) do
+			rs[i - 1] = ffi.new(styp, vec)
+		end
+	else
+		for i = 0, fdim - 1 do
+			rs[i] = ffi.new(styp)
+		end
 	end
+	return rs
+end
+
+local function getIntMat(fdim, sdim, matin, ftyp, styp)
+	local rs = ffi.new(ftyp or "int* ["..tostring(fdim).."]")
+	local styp = styp or "int ["..tostring(sdim).."]"
+	if matin then
+		for i, vec in ipairs(matin) do
+			rs[i - 1] = ffi.new(styp, vec)
+		end
+	else
+		for i = 0, fdim - 1 do
+			rs[i] = ffi.new(styp)
+		end
+	end
+	return rs
+end
+
+local function getFloatTensor(fdim, sdim, tdim, tin)
+	local rs = ffi.new("float** ["..tostring(fdim).."]")
+	local ftyp = "float* ["..tostring(sdim).."]"
+	local styp = "float ["..tostring(tdim).."]"
+	if tin then
+		for i, mat in ipairs(tin) do
+			rs[i - 1] = getFloatMat(sdim, tdim, mat, ftyp, styp)
+		end
+	else
+		for i = 0, fdim - 1 do
+			rs[i] = getFloatMat(sdim, tdim, nil, ftyp, styp)
+		end
+	end
+	return rs
+end
+
+local function getIntTensor(fdim, sdim, tdim, tin)
+	local rs = ffi.new("int** ["..tostring(fdim).."]")
+	local ftyp = "int* ["..tostring(sdim).."]"
+	local styp = "int ["..tostring(tdim).."]"
+	if tin then
+		for i, mat in ipairs(tin) do
+			rs[i - 1] = getIntMat(sdim, tdim, mat, ftyp, styp)
+		end
+	else
+		for i = 0, fdim - 1 do
+			rs[i] = getIntMat(sdim, tdim, nil, ftyp, styp)
+		end
+	end
+	return rs
+end
 
 function CRFM:updateOutput(input)
 	self:prepare(input)
@@ -61,7 +123,7 @@ end
 
 function CRFM:accGradParameters(input, gradOutput, scale)
 	if not self.cgrad then
-		self.cgrad = ffi.new(string.format("float[%d][%d]", self.nstatus + 2, self.nstatus))
+		self.cgrad = getFloatMat(self.nstatus + 2, self.nstatus)
 	else
 		cAPI.fillMat(self.cgrad, self.nstatus + 2, self.nstatus)
 	end
@@ -73,31 +135,31 @@ function CRFM:prepare(input)
 	local isize = input:size()
 	local seql = isize[1]
 	local bsize = isize[2]
-	self.cinput = ffi.new(string.format("float[%d][%d][%d]", bsize, seql, self.nstatus), input:transpose(1, 2):totable())
-	self.cweight = ffi.new(string.format("float[%d][%d]", self.nstatus + 2, self.nstatus), self.network:updateOutput(self.weight):totable())
+	self.cinput = getFloatTensor(bsize, seql, self.nstatus, input:transpose(1, 2):totable())
+	self.cweight = getFloatMat(self.nstatus + 2, self.nstatus, self.network:updateOutput(self.weight):totable())
 	self:getSeqlen(input, bsize, seql)
 	if (seql ~= self.seql) or (bsize ~= self.bsize) then
-		self.rcache = ffi.new(string.format("int[%d][%d][%d]", bsize, seql - 1, self.nstatus))
-		self.scache = ffi.new(string.format("float[%d][%d]", bsize, seql))
-		self.coutput = ffi.new(string.format("int[%d][%d]", bsize, seql))
+		self.rcache = getIntTensor(bsize, seql - 1, self.nstatus)
+		self.scache = getFloatMat(bsize, seql)
+		self.coutput = getIntMat(bsize, seql)
 		self.seql = seql
 		if bsize ~= self.bsize then
-			self.cscore = ffi.new(string.format("float[%d]", bsize))
+			self.cscore = ffi.new("float ["..tostring(bsize).."]")
 			self.bsize = bsize
 		end
 	end
 end
 
 function CRFM:computeGold(gold)
-	self.cgold = ffi.new(string.format("int[%d][%d]", self.bsize, self.seql), gold:t():totable())
-	self.cgscore = ffi.new(string.format("float[%d]", self.bsize))
+	self.cgold = getIntMat(self.bsize, self.seql, gold:t():totable())
+	self.cgscore = ffi.new("float ["..tostring(self.bsize).."]")
 	cAPI.routeScore(self.cgold, self.cweight, self.cinput, self.trans[self.nstatus], self.trans[self.nstatus + 1], self.bsize, self.cseql, self.nstatus, self.cgscore)
 	return self.cgscore
 end
 
 function CRFM:getLoss(gold, avg)
 	self:computeGold(gold)
-	self.closs = ffi.new(string.format("float[%d]", self.bsize))
+	self.closs = ffi.new("float ["..tostring(self.bsize).."]")
 	if avg then
 		return cAPI.getLoss(self.cgscore, self.cscore, self.bsize, self.cseql, 1, self.closs)
 	else
@@ -115,7 +177,7 @@ function CRFM:getSeqlen(seqd, bsize, seql)
 			end
 		end
 	end
-	self.cseql = ffi.new(string.format("int[%d]", bsize), seqlen)
+	self.cseql = ffi.new("int ["..tostring(bsize).."]", seqlen)
 end
 
 function CRFM:reset(weight)
