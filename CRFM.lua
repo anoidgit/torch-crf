@@ -115,7 +115,7 @@ end
 
 function CRFM:reset(weight)
 	self.weight = weight or torch.randn(self.nstatus + 2, self.nstatus)
-	self.gradWeight:resizeAs(self.weight):zero()
+	self.gradWeight = self.weight.new():resizeAs(self.weight):zero()
 	self:clearState()
 end
 
