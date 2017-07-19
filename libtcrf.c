@@ -58,7 +58,7 @@ pfloat oneRouteScore(int* route, pfloat** trans, pfloat** emit, pfloat* sos, pfl
 	pfloat rs = sos[route[0]] + emit[0][route[0]];
 	int i;
 	for (i = 1; i < seql; ++i){
-		rs += trans[route[i-1]][route[i]] + emit[i][route[i]]
+		rs += trans[route[i-1]][route[i]] + emit[i][route[i]];
 	}
 	rs += eos[route[seql-1]];
 	return rs;
